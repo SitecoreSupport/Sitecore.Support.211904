@@ -1,10 +1,4 @@
-﻿// --------------------------------------------------------------------------------------------------------------------
-// <copyright file="055 - Lock.cs" company="Sitecore">
-//   Copyright (c) Sitecore. All rights reserved.
-// </copyright>
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace Sitecore.Pipelines.Save
+﻿namespace Sitecore.Support.Pipelines.Save
 {
   using System;
   using Sitecore.Configuration;
@@ -12,6 +6,8 @@ namespace Sitecore.Pipelines.Save
   using Sitecore.Data.Items;
   using Sitecore.Data.Locking;
   using Sitecore.Diagnostics;
+  using Sitecore.Data.Managers;
+  using Sitecore.Pipelines.Save;
 
   /// <summary>
   /// Locks the item.
@@ -59,7 +55,7 @@ namespace Sitecore.Pipelines.Save
             {
               if (!(args.PolicyBasedLocking && Context.User.IsInRole(Constants.MinimalPageEditorRoleName)))
               {
-                item = Context.Workflow.StartEditing(item);
+                item = this.StartEditing(item);
                 if (Settings.AutomaticLockOnSave && !item.Locking.IsLocked())
                 {
                   item.Locking.Lock();
@@ -69,7 +65,7 @@ namespace Sitecore.Pipelines.Save
               {
                 using (new LockingDisabler())
                 {
-                  item = Context.Workflow.StartEditing(item);
+                  item = this.StartEditing(item);
                 }
               }
             }
@@ -131,5 +127,65 @@ namespace Sitecore.Pipelines.Save
     }
 
     #endregion
+
+    #region Private Methods
+    private Item StartEditing(Item item)
+    {
+      Error.AssertObject(item, "item");
+
+      var _context = Sitecore.Context.Data;
+
+      if (Sitecore.Context.User.IsAdministrator)
+      {
+        return item;
+      }
+
+      if (_context.IsAdministrator)
+      {
+        return WorkflowContextLock(item);
+      }
+
+      if (StandardValuesManager.IsStandardValuesHolder(item))
+      {
+        return WorkflowContextLock(item);
+      }
+
+      if (!_context.Workflow.HasWorkflow(item) && !_context.Workflow.HasDefaultWorkflow(item))
+      {
+        return WorkflowContextLock(item);
+      }
+
+      if (!_context.Workflow.IsApproved(item))
+      {
+        return WorkflowContextLock(item);
+      }
+
+      // item has been approved, create new version
+      Item newVersion = item.Versions.AddVersion();
+
+      if (newVersion != null)
+      {
+        return WorkflowContextLock(newVersion);
+      }
+
+      return null;
+    }
+
+
+    private Item WorkflowContextLock(Item item)
+    {
+      if (TemplateManager.IsFieldPartOfTemplate(FieldIDs.Lock, item))
+      {
+        if (!item.Locking.Lock())
+        {
+          return null;
+        }
+      }
+
+      return item;
+    }
+
+    #endregion
+
   }
 }

@@ -135,7 +135,7 @@
 
       var _context = Sitecore.Context.Data;
 
-      if (Sitecore.Context.User.IsAdministrator)
+      if (!Settings.RequireLockBeforeEditing || Sitecore.Context.User.IsAdministrator) // Sitecore.Support.211904
       {
         return item;
       }
